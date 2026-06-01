@@ -1,0 +1,398 @@
+/* ==========================================
+   مختبر المتطابقات - نظام القطع المتناسبة
+   تصميم احترافي مع تناسب مثالي للأبعاد
+   ========================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Tajawal', sans-serif;
+    touch-action: manipulation;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #faf5ff 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* ============ نظام التكبير الديناميكي للوحة ============ */
+#boardScaler {
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* تكبير تلقائي حسب حجم الشاشة */
+@media (min-width: 768px) {
+    #boardScaler {
+        transform: scale(1.15);
+    }
+}
+
+@media (min-width: 1024px) {
+    #boardScaler {
+        transform: scale(1.25);
+    }
+}
+
+@media (min-width: 1280px) {
+    #boardScaler {
+        transform: scale(1.35);
+    }
+}
+
+/* ============ تأثيرات الحركة ============ */
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes glow {
+    0%, 100% { box-shadow: 0 0 8px rgba(99, 102, 241, 0.3); }
+    50% { box-shadow: 0 0 25px rgba(99, 102, 241, 0.6); }
+}
+
+@keyframes successParticle {
+    0% { transform: translate(0, 0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+@keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+/* ============ القطع القابلة للسحب ============ */
+.draggable {
+    cursor: grab;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 20;
+    box-shadow: 0 8px 20px -5px rgba(0, 0, 0, 0.15), 
+                0 4px 8px -6px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    will-change: transform;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    position: relative;
+    overflow: hidden;
+    min-width: 30px;
+    min-height: 30px;
+}
+
+/* تأثير زجاجي على القطع */
+.draggable::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.25) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.draggable:active {
+    cursor: grabbing;
+    transform: scale(1.05);
+    box-shadow: 0 25px 35px -10px rgba(0, 0, 0, 0.25);
+    z-index: 100;
+}
+
+.draggable:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.2);
+    animation: glow 2s infinite;
+}
+
+/* ============ منطقة الإفلات ============ */
+.drop-zone {
+    border: 3px dashed #cbd5e1;
+    position: relative;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    background: linear-gradient(135deg, rgba(255,255,255,0.85), rgba(248,250,252,0.85));
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.05);
+    border-radius: 16px;
+}
+
+.drop-zone.drag-over {
+    border-color: #6366f1;
+    background: linear-gradient(135deg, rgba(238,242,255,0.95), rgba(224,231,255,0.95));
+    box-shadow: inset 0 0 30px rgba(99, 102, 241, 0.2);
+    transform: scale(1.03);
+}
+
+.correct-bg {
+    background: linear-gradient(135deg, #f0fdf4, #ecfdf5) !important;
+    border-color: #10b981 !important;
+    border-style: solid !important;
+    border-width: 3px !important;
+    box-shadow: 0 0 40px rgba(16, 185, 129, 0.3), inset 0 0 30px rgba(16, 185, 129, 0.1) !important;
+    animation: glow 2s infinite !important;
+}
+
+.incorrect-shake {
+    animation: shake 0.5s ease-in-out;
+}
+
+/* ============ شبكة المساعدة ============ */
+#gridOverlay {
+    background-image: 
+        linear-gradient(rgba(99, 102, 241, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99, 102, 241, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* ============ الجسيمات ============ */
+.particle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: successParticle 1s ease-out forwards;
+}
+
+/* ============ تسميات الأشكال ============ */
+.shape-label {
+    position: absolute;
+    pointer-events: none;
+    color: white;
+    font-weight: 700;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    font-size: 0.75rem;
+    z-index: 30;
+    text-align: center;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    top: 0;
+    left: 0;
+}
+
+.area-val {
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    padding: 2px 8px;
+    border-radius: 15px;
+    margin-top: 3px;
+    display: inline-block;
+}
+
+/* ============ خطوط الأبعاد ============ */
+.dimension-line {
+    position: absolute;
+    background-color: #475569;
+    pointer-events: none;
+    z-index: 40;
+    opacity: 0.9;
+}
+
+.dimension-line::before, 
+.dimension-line::after {
+    content: '';
+    position: absolute;
+    background-color: #1e293b;
+}
+
+.h-dim::before, .h-dim::after {
+    width: 2px;
+    height: 10px;
+    top: -5px;
+}
+.h-dim::before { right: 0; }
+.h-dim::after { left: 0; }
+
+.v-dim::before, .v-dim::after {
+    height: 2px;
+    width: 10px;
+    left: -5px;
+}
+.v-dim::before { top: 0; }
+.v-dim::after { bottom: 0; }
+
+.side-label {
+    position: absolute;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #0f172a;
+    pointer-events: none;
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 2px 8px;
+    border-radius: 12px;
+    z-index: 45;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ============ أزرار التحكم ============ */
+.mode-btn {
+    border: 2px solid #e2e8f0;
+    background: white;
+    font-weight: 700;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.mode-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 3px;
+    background: #4f46e5;
+    transition: all 0.3s;
+    transform: translateX(-50%);
+}
+
+.mode-btn:hover::after {
+    width: 80%;
+}
+
+.mode-btn.active {
+    background: linear-gradient(135deg, #4f46e5, #6366f1);
+    color: white;
+    border-color: #4f46e5;
+    box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
+    transform: translateY(-3px);
+}
+
+.mode-btn:not(.active):hover {
+    background-color: #f8fafc;
+    border-color: #6366f1;
+    transform: translateY(-2px);
+}
+
+/* ============ بطاقات القواعد ============ */
+.rule-card {
+    transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+    transform: translateX(40px);
+    opacity: 0;
+    filter: blur(3px);
+}
+
+.rule-card.visible {
+    transform: translateX(0);
+    opacity: 1;
+    filter: blur(0);
+}
+
+/* ============ شريط التقدم ============ */
+#progressBar {
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    background-size: 200% 100%;
+    animation: gradientShift 3s ease infinite;
+}
+
+/* ============ حاوية القطع ============ */
+#piecesContainer > div {
+    animation: float 3s ease-in-out infinite;
+}
+
+#piecesContainer > div:nth-child(2) { animation-delay: 0.5s; }
+#piecesContainer > div:nth-child(3) { animation-delay: 1s; }
+#piecesContainer > div:nth-child(4) { animation-delay: 1.5s; }
+
+#piecesContainer > div:hover {
+    animation-play-state: paused;
+    transform: translateY(-8px) scale(1.05);
+}
+
+/* ============ تنسيقات المنزلقات ============ */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 10px;
+    border-radius: 10px;
+    background: linear-gradient(to left, #6366f1, #e0e7ff);
+    outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4f46e5, #6366f1);
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+    transition: all 0.3s;
+    border: 3px solid white;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 6px 20px rgba(79, 70, 229, 0.6);
+}
+
+/* ============ إشعارات Toast ============ */
+.toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 14px 24px;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    z-index: 1000;
+    animation: slideDown 0.5s ease;
+    font-weight: bold;
+    color: white;
+}
+
+@keyframes slideDown {
+    from { transform: translateX(-50%) translateY(-100px); opacity: 0; }
+    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* ============ تأثير النبض للرسالة ============ */
+.pulse-animation {
+    animation: pulse 2s infinite;
+}
+
+/* ============ تنسيق للطباعة ============ */
+@media print {
+    body { background: white; }
+    .mode-btn, #resetBtn, #hintBtn, #piecesContainer { display: none; }
+}
+
+/* ============ تنسيق الجوال ============ */
+@media (max-width: 640px) {
+    #boardScaler {
+        transform: scale(0.85);
+    }
+    
+    .mode-btn {
+        font-size: 0.8rem;
+        padding: 0.5rem 0.8rem;
+    }
+    
+    .shape-label {
+        font-size: 0.6rem;
+    }
+}
