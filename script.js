@@ -1,19 +1,27 @@
 /**
  * ==========================================
- * مختبر المتطابقات - نظام القطع المتناسبة
- * Gamified Math Lab - Proportional Pieces System
+ * مختبر المتطابقات الهامة - النظام المتكامل
+ * Integrated Math Lab System
+ * يدعم المتطابقات الثلاث: (a+b)², (a-b)², a²-b²
  * ==========================================
  */
 
-// ============ حالة اللعبة ============
+// ============ حالة اللعبة المتكاملة ============
 const GameState = {
+    // نظام التقدم
     playerLevel: 1,
     totalPoints: 0,
     currentXP: 0,
     xpToNext: 100,
     streak: 0,
+    bestStreak: 0,
+    
+    // الإنجازات
     achievements: [],
-    soundEnabled: true,
+    totalCompletions: 0,
+    valueChangeCount: 0,
+    
+    // الحالة الحالية
     currentMode: 'first',
     a: 150,
     b: 60,
@@ -21,28 +29,143 @@ const GameState = {
     totalPieces: 0,
     hintsUsed: 0,
     startTime: Date.now(),
+    
+    // المؤقت
+    timerInterval: null,
+    elapsedSeconds: 0,
+    
+    // الإعدادات
+    soundEnabled: true,
+    autoCompleteUsed: false,
+    
     // حدود القيم
     minA: 100,
     maxA: 200,
     minB: 40,
-    maxB: 90
+    maxB: 90,
+    
+    // تتبع المراحل المكتملة
+    completedModes: {
+        first: false,
+        second: false,
+        third: false
+    }
 };
 
-// ============ نظام الإنجازات ============
+// ============ نظام الإنجازات الموسع ============
 const Achievements = {
-    firstComplete: { id: 'firstComplete', name: '🛡️ البداية', desc: 'أكمل أول متطابقة', icon: '🛡️', points: 50 },
-    speedRunner: { id: 'speedRunner', name: '⚡ السريع', desc: 'أكمل البرهان في أقل من 30 ثانية', icon: '⚡', points: 100 },
-    perfectStreak: { id: 'perfectStreak', name: '🔥 متقن', desc: '3 محاولات ناجحة متتالية', icon: '🔥', points: 75 },
-    explorer: { id: 'explorer', name: '🧭 مستكشف', desc: 'جرب جميع المتطابقات الثلاث', icon: '🧭', points: 60 },
-    noHints: { id: 'noHints', name: '🧠 عبقري', desc: 'أكمل بدون استخدام تلميحات', icon: '🧠', points: 150 },
-    mathWizard: { id: 'mathWizard', name: '🧙 ساحر الرياضيات', desc: 'اجمع 500 نقطة', icon: '🧙', points: 200 },
-    collector: { id: 'collector', name: '🎖️ جامع الإنجازات', desc: 'احصل على 5 إنجازات', icon: '🎖️', points: 100 },
-    perfectionist: { id: 'perfectionist', name: '💎 المثالي', desc: 'أكمل جميع المتطابقات', icon: '💎', points: 300 },
-    proportionalMaster: { id: 'proportionalMaster', name: '📐 خبير التناسب', desc: 'غير القيم 5 مرات وأكمل البرهان', icon: '📐', points: 80 }
+    firstStep: {
+        id: 'firstStep',
+        name: '🛡️ الخطوة الأولى',
+        desc: 'أكمل أول برهان هندسي',
+        icon: '🛡️',
+        points: 50,
+        condition: () => GameState.totalCompletions >= 1
+    },
+    speedRunner: {
+        id: 'speedRunner',
+        name: '⚡ البطل السريع',
+        desc: 'أكمل البرهان في أقل من 30 ثانية',
+        icon: '⚡',
+        points: 100,
+        condition: () => GameState.elapsedSeconds < 30 && GameState.totalCompletions > 0
+    },
+    perfectStreak: {
+        id: 'perfectStreak',
+        name: '🔥 سيد الإتقان',
+        desc: 'حقق سلسلة من 3 إجابات صحيحة',
+        icon: '🔥',
+        points: 75,
+        condition: () => GameState.streak >= 3
+    },
+    explorer: {
+        id: 'explorer',
+        name: '🧭 المستكشف',
+        desc: 'جرب جميع المتطابقات الثلاث',
+        icon: '🧭',
+        points: 60,
+        condition: () => Object.values(GameState.completedModes).every(v => v === true)
+    },
+    noHints: {
+        id: 'noHints',
+        name: '🧠 العبقري المستقل',
+        desc: 'أكمل برهاناً بدون استخدام التلميحات',
+        icon: '🧠',
+        points: 150,
+        condition: () => GameState.hintsUsed === 0 && GameState.totalCompletions > 0
+    },
+    mathWizard: {
+        id: 'mathWizard',
+        name: '🧙 ساحر الرياضيات',
+        desc: 'اجمع 500 نقطة',
+        icon: '🧙',
+        points: 200,
+        condition: () => GameState.totalPoints >= 500
+    },
+    collector: {
+        id: 'collector',
+        name: '🎖️ جامع الأوسمة',
+        desc: 'احصل على 6 إنجازات مختلفة',
+        icon: '🎖️',
+        points: 100,
+        condition: () => GameState.achievements.length >= 6
+    },
+    perfectionist: {
+        id: 'perfectionist',
+        name: '💎 المثالي',
+        desc: 'أكمل جميع المتطابقات بدون أخطاء',
+        icon: '💎',
+        points: 300,
+        condition: () => Object.values(GameState.completedModes).every(v => v === true) && GameState.streak >= 3
+    },
+    proportionalMaster: {
+        id: 'proportionalMaster',
+        name: '📐 خبير التناسب',
+        desc: 'غير القيم 5 مرات وأكمل البرهان',
+        icon: '📐',
+        points: 80,
+        condition: () => GameState.valueChangeCount >= 5
+    },
+    marathonRunner: {
+        id: 'marathonRunner',
+        name: '🏃 عداء الماراثون',
+        desc: 'أكمل 10 براهين هندسية',
+        icon: '🏃',
+        points: 150,
+        condition: () => GameState.totalCompletions >= 10
+    },
+    speedMaster: {
+        id: 'speedMaster',
+        name: '🚀 سيد السرعة',
+        desc: 'أكمل برهاناً في أقل من 15 ثانية',
+        icon: '🚀',
+        points: 200,
+        condition: () => GameState.elapsedSeconds < 15 && GameState.totalCompletions > 0
+    },
+    noAutoComplete: {
+        id: 'noAutoComplete',
+        name: '🎓 المعلم الصغير',
+        desc: 'أكمل 3 براهين بدون استخدام الحل التلقائي',
+        icon: '🎓',
+        points: 120,
+        condition: () => GameState.totalCompletions >= 3 && !GameState.autoCompleteUsed
+    }
 };
 
 // ============ عناصر DOM ============
 const elements = {
+    // HUD
+    playerLevel: document.getElementById('playerLevel'),
+    totalPoints: document.getElementById('totalPoints'),
+    currentXP: document.getElementById('currentXP'),
+    xpToNext: document.getElementById('xpToNext'),
+    xpBar: document.getElementById('xpBar'),
+    streakCount: document.getElementById('streakCount'),
+    achievementsCount: document.getElementById('achievementsCount'),
+    achievementsPreview: document.getElementById('achievementsPreview'),
+    lastEarned: document.getElementById('lastEarned'),
+    
+    // القياسات
     rangeA: document.getElementById('rangeA'),
     rangeB: document.getElementById('rangeB'),
     valA: document.getElementById('valA'),
@@ -53,6 +176,9 @@ const elements = {
     valDiff: document.getElementById('valDiff'),
     rangeAValue: document.getElementById('rangeAValue'),
     rangeBValue: document.getElementById('rangeBValue'),
+    modeDetails: document.getElementById('modeDetails'),
+    
+    // اللوحة
     piecesContainer: document.getElementById('piecesContainer'),
     mainDropZone: document.getElementById('mainDropZone'),
     labelsContainer: document.getElementById('labelsContainer'),
@@ -62,19 +188,22 @@ const elements = {
     dropPrompt: document.getElementById('dropPrompt'),
     totalAreaVal: document.getElementById('totalAreaVal'),
     rulesPanel: document.getElementById('rulesPanel'),
-    playerLevel: document.getElementById('playerLevel'),
-    totalPoints: document.getElementById('totalPoints'),
-    currentXP: document.getElementById('currentXP'),
-    xpToNext: document.getElementById('xpToNext'),
-    xpBar: document.getElementById('xpBar'),
-    streakCount: document.getElementById('streakCount'),
-    achievementsCount: document.getElementById('achievementsCount'),
+    boardScaler: document.getElementById('boardScaler'),
+    
+    // التقدم
     progressBar: document.getElementById('progressBar'),
     progressText: document.getElementById('progressText'),
     piecesRemaining: document.getElementById('piecesRemaining'),
+    timer: document.getElementById('timer'),
+    
+    // المحتوى
     storyText: document.getElementById('storyText'),
     dailyChallenge: document.getElementById('dailyChallenge'),
-    boardScaler: document.getElementById('boardScaler')
+    ruleTitle: document.getElementById('ruleTitle'),
+    ruleDetails: document.getElementById('ruleDetails'),
+    areaDetails: document.getElementById('areaDetails'),
+    achievementsList: document.getElementById('achievementsList'),
+    pointsEarned: document.getElementById('pointsEarned')
 };
 
 // ============ نظام الصوت ============
@@ -89,7 +218,7 @@ const AudioSystem = {
         }
     },
     
-    playTone(frequency, duration, type = 'sine') {
+    playTone(frequency, duration, type = 'sine', volume = 0.3) {
         if (!this.context || !GameState.soundEnabled) return;
         
         const oscillator = this.context.createOscillator();
@@ -101,7 +230,7 @@ const AudioSystem = {
         oscillator.type = type;
         oscillator.frequency.setValueAtTime(frequency, this.context.currentTime);
         
-        gainNode.gain.setValueAtTime(0.3, this.context.currentTime);
+        gainNode.gain.setValueAtTime(volume, this.context.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + duration);
         
         oscillator.start(this.context.currentTime);
@@ -111,37 +240,82 @@ const AudioSystem = {
     playSuccess() {
         this.playTone(523, 0.1);
         setTimeout(() => this.playTone(659, 0.1), 100);
-        setTimeout(() => this.playTone(784, 0.2), 200);
+        setTimeout(() => this.playTone(784, 0.15), 200);
+        setTimeout(() => this.playTone(1047, 0.2), 300);
     },
     
     playDrop() {
-        this.playTone(440, 0.05, 'triangle');
+        this.playTone(440, 0.06, 'triangle', 0.2);
     },
     
     playAchievement() {
         this.playTone(784, 0.1);
         setTimeout(() => this.playTone(988, 0.1), 100);
-        setTimeout(() => this.playTone(1175, 0.3), 200);
+        setTimeout(() => this.playTone(1175, 0.15), 200);
+        setTimeout(() => this.playTone(1319, 0.3), 300);
+    },
+    
+    playError() {
+        this.playTone(200, 0.2, 'sawtooth', 0.2);
     }
 };
 
-// ============ نظام الجسيمات ============
-function createParticles(x, y) {
-    const container = document.getElementById('particlesContainer');
-    const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+// ============ نظام المؤقت ============
+function startTimer() {
+    stopTimer();
+    GameState.elapsedSeconds = 0;
+    updateTimerDisplay();
     
-    for (let i = 0; i < 20; i++) {
+    GameState.timerInterval = setInterval(() => {
+        GameState.elapsedSeconds++;
+        updateTimerDisplay();
+        
+        // تحذيرات الوقت
+        if (GameState.elapsedSeconds >= 25 && GameState.elapsedSeconds < 30) {
+            elements.timer.classList.add('warning');
+            elements.timer.classList.remove('danger');
+        } else if (GameState.elapsedSeconds >= 30) {
+            elements.timer.classList.remove('warning');
+            elements.timer.classList.add('danger');
+        } else {
+            elements.timer.classList.remove('warning', 'danger');
+        }
+    }, 1000);
+}
+
+function stopTimer() {
+    if (GameState.timerInterval) {
+        clearInterval(GameState.timerInterval);
+        GameState.timerInterval = null;
+    }
+    elements.timer.classList.remove('warning', 'danger');
+}
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(GameState.elapsedSeconds / 60);
+    const seconds = GameState.elapsedSeconds % 60;
+    elements.timer.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+// ============ نظام الجسيمات ============
+function createParticles(x, y, count = 25) {
+    const container = document.getElementById('particlesContainer');
+    const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+    
+    for (let i = 0; i < count; i++) {
         const particle = document.createElement('div');
         particle.className = 'particle';
         particle.style.left = x + 'px';
         particle.style.top = y + 'px';
         particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-        particle.style.setProperty('--tx', (Math.random() - 0.5) * 200 + 'px');
-        particle.style.setProperty('--ty', (Math.random() - 0.5) * 200 + 'px');
-        particle.style.animationDuration = (Math.random() * 0.5 + 0.5) + 's';
+        particle.style.width = (Math.random() * 8 + 4) + 'px';
+        particle.style.height = (Math.random() * 8 + 4) + 'px';
+        particle.style.setProperty('--tx', (Math.random() - 0.5) * 250 + 'px');
+        particle.style.setProperty('--ty', (Math.random() - 0.5) * 250 + 'px');
+        particle.style.animationDuration = (Math.random() * 0.8 + 0.6) + 's';
         
         container.appendChild(particle);
-        setTimeout(() => particle.remove(), 1000);
+        setTimeout(() => particle.remove(), 1500);
     }
 }
 
@@ -149,8 +323,14 @@ function createParticles(x, y) {
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = 'toast';
-    toast.style.background = type === 'success' ? '#10b981' : 
-                             type === 'warning' ? '#f59e0b' : '#8b5cf6';
+    const colors = {
+        success: '#10b981',
+        warning: '#f59e0b',
+        error: '#ef4444',
+        achievement: '#8b5cf6',
+        info: '#6366f1'
+    };
+    toast.style.background = colors[type] || colors.info;
     toast.style.color = 'white';
     toast.textContent = message;
     document.body.appendChild(toast);
@@ -159,7 +339,7 @@ function showToast(message, type = 'success') {
         toast.style.opacity = '0';
         toast.style.transition = 'opacity 0.5s';
         setTimeout(() => toast.remove(), 500);
-    }, 2000);
+    }, 2500);
 }
 
 // ============ نظام XP والمستويات ============
@@ -170,16 +350,16 @@ function addXP(amount) {
         GameState.currentXP -= GameState.xpToNext;
         GameState.playerLevel++;
         GameState.xpToNext = Math.floor(GameState.xpToNext * 1.5);
-        showToast(`🎉 تهانينا! وصلت للمستوى ${GameState.playerLevel}!`, 'success');
+        showToast(`🎉 مبروك! وصلت للمستوى ${GameState.playerLevel}!`, 'achievement');
         AudioSystem.playAchievement();
     }
     
     updateHUD();
 }
 
-function addPoints(amount) {
+function addPoints(amount, reason = '') {
     GameState.totalPoints += amount;
-    document.getElementById('lastEarned').textContent = amount;
+    elements.lastEarned.textContent = amount;
     
     if (GameState.totalPoints >= 500 && !GameState.achievements.includes('mathWizard')) {
         unlockAchievement('mathWizard');
@@ -190,7 +370,14 @@ function addPoints(amount) {
 }
 
 // ============ نظام الإنجازات ============
-let valueChangeCount = 0;
+function checkAllAchievements() {
+    Object.keys(Achievements).forEach(key => {
+        const achievement = Achievements[key];
+        if (!GameState.achievements.includes(achievement.id) && achievement.condition()) {
+            unlockAchievement(achievement.id);
+        }
+    });
+}
 
 function unlockAchievement(achievementId) {
     if (GameState.achievements.includes(achievementId)) return;
@@ -198,12 +385,12 @@ function unlockAchievement(achievementId) {
     const achievement = Achievements[achievementId];
     GameState.achievements.push(achievementId);
     
-    showToast(`${achievement.icon} إنجاز جديد: ${achievement.name}!`, 'achievement');
+    showToast(`${achievement.icon} إنجاز جديد: ${achievement.name}! (+${achievement.points} نقطة)`, 'achievement');
     addPoints(achievement.points);
     AudioSystem.playAchievement();
     
-    if (GameState.achievements.length >= 5 && !GameState.achievements.includes('collector')) {
-        unlockAchievement('collector');
+    if (GameState.achievements.length >= 6 && !GameState.achievements.includes('collector')) {
+        setTimeout(() => unlockAchievement('collector'), 500);
     }
     
     updateAchievements();
@@ -213,20 +400,24 @@ function unlockAchievement(achievementId) {
 function updateAchievements() {
     elements.achievementsCount.textContent = GameState.achievements.length;
     
-    const preview = document.getElementById('achievementsPreview');
-    preview.innerHTML = GameState.achievements.slice(-4).map(id => 
-        `<span title="${Achievements[id].name}">${Achievements[id].icon}</span>`
+    elements.achievementsPreview.innerHTML = GameState.achievements.slice(-5).map(id => 
+        `<span title="${Achievements[id].name}" class="text-base">${Achievements[id].icon}</span>`
     ).join('');
     
-    const list = document.getElementById('achievementsList');
-    list.innerHTML = Object.values(Achievements).map(ach => `
-        <div class="flex items-center gap-2 p-2 rounded-lg ${GameState.achievements.includes(ach.id) ? 'bg-white shadow-sm' : 'bg-slate-100 opacity-50'}">
+    elements.achievementsList.innerHTML = Object.values(Achievements).map(ach => `
+        <div class="flex items-center gap-2 p-2 rounded-lg transition-all ${
+            GameState.achievements.includes(ach.id) 
+                ? 'bg-white shadow-sm border border-green-100' 
+                : 'bg-slate-100 opacity-60'
+        }">
             <span class="text-lg">${ach.icon}</span>
-            <div>
+            <div class="flex-1">
                 <p class="font-semibold text-xs">${ach.name}</p>
                 <p class="text-[10px] text-slate-500">${ach.desc}</p>
             </div>
-            ${GameState.achievements.includes(ach.id) ? '<span class="ml-auto text-emerald-500">✅</span>' : '<span class="ml-auto text-slate-300">🔒</span>'}
+            <span class="${GameState.achievements.includes(ach.id) ? 'text-emerald-500' : 'text-slate-300'}">
+                ${GameState.achievements.includes(ach.id) ? '✅' : '🔒'}
+            </span>
         </div>
     `).join('');
 }
@@ -241,15 +432,29 @@ function updateHUD() {
     elements.streakCount.textContent = GameState.streak;
     elements.progressBar.style.width = (GameState.placedPieces / GameState.totalPieces * 100) + '%';
     elements.progressText.textContent = `${GameState.placedPieces}/${GameState.totalPieces}`;
-    elements.piecesRemaining.textContent = `${GameState.totalPieces - GameState.placedPieces} قطع`;
+    elements.piecesRemaining.textContent = `${GameState.totalPieces - GameState.placedPieces} قطعة`;
     
     // تحديث القياسات
     elements.valADisplay.textContent = GameState.a;
     elements.valBDisplay.textContent = GameState.b;
     elements.valSum.textContent = GameState.a + GameState.b;
-    elements.valDiff.textContent = GameState.a - GameState.b;
+    elements.valDiff.textContent = Math.abs(GameState.a - GameState.b);
     elements.rangeAValue.textContent = GameState.a;
     elements.rangeBValue.textContent = GameState.b;
+    
+    updateModeDetails();
+}
+
+function updateModeDetails() {
+    const modeData = getModeData();
+    elements.modeDetails.innerHTML = `
+        <span class="text-indigo-600">المساحة الكلية:</span> 
+        <span class="font-bold">${modeData.totalArea} وحدة²</span>
+    `;
+    
+    elements.ruleTitle.textContent = getModeTitle();
+    elements.ruleDetails.innerHTML = getRuleDetailsHTML();
+    elements.areaDetails.innerHTML = getAreaDetailsHTML();
 }
 
 // ============ حفظ وتحميل التقدم ============
@@ -258,221 +463,186 @@ function saveProgress() {
         level: GameState.playerLevel,
         points: GameState.totalPoints,
         xp: GameState.currentXP,
+        xpToNext: GameState.xpToNext,
         achievements: GameState.achievements,
         streak: GameState.streak,
-        valueChangeCount: valueChangeCount
+        bestStreak: GameState.bestStreak,
+        totalCompletions: GameState.totalCompletions,
+        valueChangeCount: GameState.valueChangeCount,
+        completedModes: GameState.completedModes,
+        autoCompleteUsed: GameState.autoCompleteUsed
     };
-    localStorage.setItem('mathLabProgress', JSON.stringify(saveData));
+    localStorage.setItem('mathLabProProgress', JSON.stringify(saveData));
 }
 
 function loadProgress() {
-    const saved = localStorage.getItem('mathLabProgress');
+    const saved = localStorage.getItem('mathLabProProgress');
     if (saved) {
         const data = JSON.parse(saved);
         GameState.playerLevel = data.level || 1;
         GameState.totalPoints = data.points || 0;
         GameState.currentXP = data.xp || 0;
+        GameState.xpToNext = data.xpToNext || 100;
         GameState.achievements = data.achievements || [];
         GameState.streak = data.streak || 0;
-        valueChangeCount = data.valueChangeCount || 0;
+        GameState.bestStreak = data.bestStreak || 0;
+        GameState.totalCompletions = data.totalCompletions || 0;
+        GameState.valueChangeCount = data.valueChangeCount || 0;
+        GameState.completedModes = data.completedModes || { first: false, second: false, third: false };
+        GameState.autoCompleteUsed = data.autoCompleteUsed || false;
         updateHUD();
         updateAchievements();
     }
 }
 
-// ============ نظام التلميحات ============
-function useHint() {
-    if (GameState.totalPoints >= 10) {
-        GameState.totalPoints -= 10;
-        GameState.hintsUsed++;
-        updateHUD();
-        
-        const pieces = document.querySelectorAll('#piecesContainer > div');
-        const placed = GameState.placedPieces;
-        
-        if (pieces[placed]) {
-            pieces[placed].style.animation = 'none';
-            pieces[placed].style.boxShadow = '0 0 25px #f59e0b, 0 0 50px #f59e0b';
-            pieces[placed].style.transform = 'scale(1.08)';
-            setTimeout(() => {
-                pieces[placed].style.boxShadow = '';
-                pieces[placed].style.transform = '';
-                pieces[placed].style.animation = '';
-            }, 2000);
-        }
-        
-        showToast('💡 تم خصم 10 نقاط للتلميح', 'warning');
-    } else {
-        showToast('❌ ليس لديك نقاط كافية! تحتاج 10 نقاط على الأقل', 'warning');
-    }
-}
-
-// ============ التحدي التالي ============
-function nextChallenge() {
-    const modes = ['first', 'second', 'third'];
-    const nextMode = modes[Math.floor(Math.random() * modes.length)];
-    
-    // توليد قيم متناسبة جديدة
-    GameState.a = Math.floor(Math.random() * (GameState.maxA - GameState.minA + 1)) + GameState.minA;
-    GameState.b = Math.floor(Math.random() * (GameState.maxB - GameState.minB + 1)) + GameState.minB;
-    
-    // ضمان أن a > b دائماً
-    if (GameState.a <= GameState.b) {
-        GameState.a = GameState.b + 20;
-    }
-    
-    elements.rangeA.value = GameState.a;
-    elements.rangeB.value = GameState.b;
-    elements.valA.textContent = GameState.a;
-    elements.valB.textContent = GameState.b;
-    
-    switchMode(nextMode);
-    showToast('🚀 تحدي جديد يبدأ الآن!', 'success');
-}
-
 // ============ نظام القطع المتناسبة ============
-/**
- * حساب أبعاد القطع بناءً على a و b
- * تضمن هذه الدالة تناسب القطع مع المربع/المستطيل الكلي
- */
-function calculateProportionalPieces(mode) {
+function getModeData() {
     const a = GameState.a;
     const b = GameState.b;
     
-    switch(mode) {
+    switch(GameState.currentMode) {
         case 'first': // (a+b)²
             return {
                 pieces: [
-                    { 
-                        w: a, h: a, 
-                        c: 'bg-indigo-500', 
-                        l: `a² = ${a*a}`, 
-                        calc: a*a, 
-                        id: 'sq-a', 
-                        pos: { top: '0px', right: '0px' },
-                        label: `a²`
-                    },
-                    { 
-                        w: b, h: b, 
-                        c: 'bg-pink-500', 
-                        l: `b² = ${b*b}`, 
-                        calc: b*b, 
-                        id: 'sq-b', 
-                        pos: { bottom: '0px', left: '0px' },
-                        label: `b²`
-                    },
-                    { 
-                        w: a, h: b, 
-                        c: 'bg-amber-400', 
-                        l: `ab = ${a*b}`, 
-                        calc: a*b, 
-                        id: 'rect-1', 
-                        pos: { bottom: '0px', right: '0px' },
-                        label: `ab`
-                    },
-                    { 
-                        w: b, h: a, 
-                        c: 'bg-amber-400', 
-                        l: `ab = ${a*b}`, 
-                        calc: a*b, 
-                        id: 'rect-2', 
-                        pos: { top: '0px', left: '0px' },
-                        label: `ab`
-                    }
+                    { w: a, h: a, c: 'bg-indigo-500', label: `a²`, calc: a*a, id: 'sq-a', 
+                      pos: { top: '0px', right: '0px' } },
+                    { w: b, h: b, c: 'bg-pink-500', label: `b²`, calc: b*b, id: 'sq-b', 
+                      pos: { bottom: '0px', left: '0px' } },
+                    { w: a, h: b, c: 'bg-amber-400', label: `ab`, calc: a*b, id: 'rect-1', 
+                      pos: { bottom: '0px', right: '0px' } },
+                    { w: b, h: a, c: 'bg-amber-400', label: `ab`, calc: a*b, id: 'rect-2', 
+                      pos: { top: '0px', left: '0px' } }
                 ],
                 totalWidth: a + b,
                 totalHeight: a + b,
-                totalArea: (a + b) * (a + b),
+                totalArea: (a + b) ** 2,
                 dims: [
-                    { text: 'a', x: b, y: -25, w: a, type: 'h' },
-                    { text: 'b', x: 0, y: -25, w: b, type: 'h' },
-                    { text: 'a', x: a+b+12, y: 0, h: a, type: 'v' },
-                    { text: 'b', x: a+b+12, y: a, h: b, type: 'v' }
-                ]
+                    { text: 'a', x: b, y: -22, w: a, type: 'h' },
+                    { text: 'b', x: 0, y: -22, w: b, type: 'h' },
+                    { text: 'a', x: a+b+10, y: 0, h: a, type: 'v' },
+                    { text: 'b', x: a+b+10, y: a, h: b, type: 'v' }
+                ],
+                formula: `(a+b)² = a² + 2ab + b²`,
+                explanation: `المساحة = (${a}+${b})² = ${a}² + 2×${a}×${b} + ${b}² = ${a*a} + ${2*a*b} + ${b*b} = ${(a+b)**2}`
             };
             
         case 'second': // (a-b)²
+            const amb = a - b;
             return {
                 pieces: [
-                    { 
-                        w: a-b, h: a-b, 
-                        c: 'bg-indigo-700', 
-                        l: `(a-b)² = ${(a-b)*(a-b)}`, 
-                        calc: (a-b)*(a-b), 
-                        id: 'sq-amb', 
-                        pos: { top: '0px', right: '0px' },
-                        label: `(a-b)²`
-                    },
-                    { 
-                        w: b, h: a-b, 
-                        c: 'bg-slate-400', 
-                        l: `b(a-b) = ${b*(a-b)}`, 
-                        calc: b*(a-b), 
-                        id: 'rect-sub1', 
-                        pos: { top: '0px', left: '0px' },
-                        label: `b(a-b)`
-                    },
-                    { 
-                        w: a-b, h: b, 
-                        c: 'bg-slate-400', 
-                        l: `b(a-b) = ${(a-b)*b}`, 
-                        calc: (a-b)*b, 
-                        id: 'rect-sub2', 
-                        pos: { bottom: '0px', right: '0px' },
-                        label: `b(a-b)`
-                    },
-                    { 
-                        w: b, h: b, 
-                        c: 'bg-pink-500', 
-                        l: `b² = ${b*b}`, 
-                        calc: b*b, 
-                        id: 'sq-b2', 
-                        pos: { bottom: '0px', left: '0px' },
-                        label: `b²`
-                    }
+                    { w: amb, h: amb, c: 'bg-indigo-700', label: `(a-b)²`, calc: amb**2, id: 'sq-amb', 
+                      pos: { top: '0px', right: '0px' } },
+                    { w: b, h: amb, c: 'bg-slate-400', label: `b(a-b)`, calc: b*amb, id: 'rect-sub1', 
+                      pos: { top: '0px', left: '0px' } },
+                    { w: amb, h: b, c: 'bg-slate-400', label: `b(a-b)`, calc: amb*b, id: 'rect-sub2', 
+                      pos: { bottom: '0px', right: '0px' } },
+                    { w: b, h: b, c: 'bg-pink-500', label: `b²`, calc: b*b, id: 'sq-b2', 
+                      pos: { bottom: '0px', left: '0px' } }
                 ],
                 totalWidth: a,
                 totalHeight: a,
-                totalArea: a * a,
+                totalArea: a ** 2,
                 dims: [
-                    { text: 'a-b', x: b, y: -25, w: a-b, type: 'h' },
-                    { text: 'b', x: 0, y: -25, w: b, type: 'h' },
-                    { text: 'a-b', x: a+12, y: 0, h: a-b, type: 'v' },
-                    { text: 'b', x: a+12, y: a-b, h: b, type: 'v' }
-                ]
+                    { text: 'a-b', x: b, y: -22, w: amb, type: 'h' },
+                    { text: 'b', x: 0, y: -22, w: b, type: 'h' },
+                    { text: 'a-b', x: a+10, y: 0, h: amb, type: 'v' },
+                    { text: 'b', x: a+10, y: amb, h: b, type: 'v' }
+                ],
+                formula: `(a-b)² = a² - 2ab + b²`,
+                explanation: `المساحة = (${a}-${b})² = ${a}² - 2×${a}×${b} + ${b}² = ${a*a} - ${2*a*b} + ${b*b} = ${amb**2}`
             };
             
-        case 'third': // (a-b)(a+b)
+        case 'third': // a² - b² = (a-b)(a+b)
+            const amb2 = a - b;
             return {
                 pieces: [
-                    { 
-                        w: a, h: a-b, 
-                        c: 'bg-indigo-500', 
-                        l: `a(a-b) = ${a*(a-b)}`, 
-                        calc: a*(a-b), 
-                        id: 't-rect-1', 
-                        pos: { top: '0px', left: '0px' },
-                        label: `a(a-b)`
-                    },
-                    { 
-                        w: b, h: a-b, 
-                        c: 'bg-amber-400', 
-                        l: `b(a-b) = ${b*(a-b)}`, 
-                        calc: b*(a-b), 
-                        id: 't-rect-2', 
-                        pos: { top: '0px', right: '0px' },
-                        label: `b(a-b)`
-                    }
+                    { w: a, h: amb2, c: 'bg-indigo-500', label: `a(a-b)`, calc: a*amb2, id: 't-rect-1', 
+                      pos: { top: '0px', left: '0px' } },
+                    { w: b, h: amb2, c: 'bg-amber-400', label: `b(a-b)`, calc: b*amb2, id: 't-rect-2', 
+                      pos: { top: '0px', right: '0px' } }
                 ],
                 totalWidth: a + b,
-                totalHeight: a - b,
-                totalArea: (a + b) * (a - b),
+                totalHeight: amb2,
+                totalArea: (a + b) * amb2,
                 dims: [
-                    { text: 'a', x: 0, y: -25, w: a, type: 'h' },
-                    { text: 'b', x: a, y: -25, w: b, type: 'h' },
-                    { text: 'a-b', x: a+b+12, y: 0, h: a-b, type: 'v' }
-                ]
+                    { text: 'a', x: 0, y: -22, w: a, type: 'h' },
+                    { text: 'b', x: a, y: -22, w: b, type: 'h' },
+                    { text: 'a-b', x: a+b+10, y: 0, h: amb2, type: 'v' }
+                ],
+                formula: `a² - b² = (a-b)(a+b)`,
+                explanation: `المساحة = (${a}-${b})(${a}+${b}) = ${a}² - ${b}² = ${a*a} - ${b*b} = ${(a+b)*amb2}`
             };
+    }
+}
+
+function getModeTitle() {
+    switch(GameState.currentMode) {
+        case 'first': return 'المتطابقة الأولى: مربع المجموع';
+        case 'second': return 'المتطابقة الثانية: مربع الفرق';
+        case 'third': return 'المتطابقة الثالثة: فرق المربعين';
+    }
+}
+
+function getRuleDetailsHTML() {
+    const a = GameState.a;
+    const b = GameState.b;
+    
+    switch(GameState.currentMode) {
+        case 'first':
+            return `
+                <p>• المساحة الكلية = (a+b)² = <strong>${(a+b)**2}</strong></p>
+                <p>• a² = ${a}² = <strong>${a*a}</strong></p>
+                <p>• b² = ${b}² = <strong>${b*b}</strong></p>
+                <p>• 2ab = 2×${a}×${b} = <strong>${2*a*b}</strong></p>
+                <p class="text-emerald-600">✅ ${a*a} + ${2*a*b} + ${b*b} = ${(a+b)**2}</p>
+            `;
+        case 'second':
+            const amb = a - b;
+            return `
+                <p>• المساحة الكلية = a² = <strong>${a*a}</strong></p>
+                <p>• (a-b)² = (${a}-${b})² = <strong>${amb**2}</strong></p>
+                <p>• b² = ${b}² = <strong>${b*b}</strong></p>
+                <p>• 2×b(a-b) = 2×${b}×${amb} = <strong>${2*b*amb}</strong></p>
+                <p class="text-emerald-600">✅ ${amb**2} + ${2*b*amb} + ${b*b} = ${a*a}</p>
+            `;
+        case 'third':
+            const amb2 = a - b;
+            return `
+                <p>• المساحة الكلية = (a+b)(a-b) = <strong>${(a+b)*amb2}</strong></p>
+                <p>• a(a-b) = ${a}×${amb2} = <strong>${a*amb2}</strong></p>
+                <p>• b(a-b) = ${b}×${amb2} = <strong>${b*amb2}</strong></p>
+                <p class="text-emerald-600">✅ ${a*amb2} + ${b*amb2} = ${(a+b)*amb2}</p>
+            `;
+    }
+}
+
+function getAreaDetailsHTML() {
+    const a = GameState.a;
+    const b = GameState.b;
+    
+    switch(GameState.currentMode) {
+        case 'first':
+            return `
+                <p>🔵 المربع الأزرق: a² = <strong>${a*a}</strong></p>
+                <p>🩷 المربع الوردي: b² = <strong>${b*b}</strong></p>
+                <p>🟡 المستطيلان: 2(ab) = <strong>${2*a*b}</strong></p>
+                <p class="font-bold mt-1">المجموع: ${(a+b)**2}</p>
+            `;
+        case 'second':
+            const amb = a - b;
+            return `
+                <p>🔵 المربع الأزرق: (a-b)² = <strong>${amb**2}</strong></p>
+                <p>⬜ المستطيلان: 2b(a-b) = <strong>${2*b*amb}</strong></p>
+                <p>🩷 المربع الوردي: b² = <strong>${b*b}</strong></p>
+                <p class="font-bold mt-1">المجموع: ${a*a}</p>
+            `;
+        case 'third':
+            const amb2 = a - b;
+            return `
+                <p>🔵 المستطيل الأزرق: a(a-b) = <strong>${a*amb2}</strong></p>
+                <p>🟡 المستطيل الأصفر: b(a-b) = <strong>${b*amb2}</strong></p>
+                <p class="font-bold mt-1">المجموع: ${(a+b)*amb2}</p>
+            `;
     }
 }
 
@@ -496,31 +666,27 @@ function clearZone() {
     elements.feedback.classList.add('invisible');
     elements.rulesPanel.classList.remove('visible');
     GameState.placedPieces = 0;
-    GameState.startTime = Date.now();
     GameState.hintsUsed = 0;
+    GameState.autoCompleteUsed = false;
     updateHUD();
 }
 
-/**
- * إنشاء القطع المتناسبة مع الأبعاد الصحيحة
- */
 function createPieces() {
     elements.piecesContainer.innerHTML = '';
     
-    const modeData = calculateProportionalPieces(GameState.currentMode);
+    const modeData = getModeData();
     const pieces = modeData.pieces;
     GameState.totalPieces = pieces.length;
 
     pieces.forEach((p, index) => {
         const div = document.createElement('div');
         div.className = `draggable rounded-lg flex items-center justify-center relative ${p.c}`;
-        div.style.width = Math.max(p.w, 40) + 'px';   // حد أدنى 40px
-        div.style.height = Math.max(p.h, 40) + 'px';   // حد أدنى 40px
+        div.style.width = Math.max(p.w, 35) + 'px';
+        div.style.height = Math.max(p.h, 35) + 'px';
         div.draggable = true;
         div.id = p.id;
-        div.title = `${p.label}: ${p.calc} وحدة مربعة`;
+        div.title = `${p.label}: ${p.calc} وحدة² | اسحبني إلى اللوحة`;
         
-        // إضافة بيانات القطعة كـ data attributes
         div.dataset.width = p.w;
         div.dataset.height = p.h;
         div.dataset.area = p.calc;
@@ -529,26 +695,21 @@ function createPieces() {
         const label = document.createElement('span');
         label.className = 'shape-label';
         
-        // تسمية متكيفة مع حجم القطعة
-        const fontSize = Math.min(p.w, p.h) > 60 ? '0.8rem' : '0.6rem';
+        const fontSize = Math.min(p.w, p.h) > 50 ? '0.75rem' : '0.6rem';
         label.style.fontSize = fontSize;
-        label.innerHTML = `<span>${p.label}</span><span class="area-val" style="font-size:${Math.min(p.w, p.h) > 60 ? '0.65rem' : '0.5rem'}">${p.calc} م²</span>`;
+        label.innerHTML = `<span>${p.label}</span><span class="area-val" style="font-size:${Math.min(p.w, p.h) > 50 ? '0.6rem' : '0.5rem'}">${p.calc}</span>`;
         
         div.appendChild(label);
 
-        // أحداث السحب
         div.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', e.target.id);
             e.target.style.opacity = '0.7';
-            e.target.style.transform = 'scale(1.05)';
         });
         
         div.addEventListener('dragend', (e) => {
             e.target.style.opacity = '1';
-            e.target.style.transform = '';
         });
 
-        // تأخير الحركة للتنوع
         div.style.animationDelay = `${index * 0.15}s`;
         
         elements.piecesContainer.appendChild(div);
@@ -557,13 +718,10 @@ function createPieces() {
     updateHUD();
 }
 
-/**
- * رسم خطوط الأبعاد على اللوحة
- */
 function drawDimensions() {
     elements.labelsContainer.innerHTML = '';
     
-    const modeData = calculateProportionalPieces(GameState.currentMode);
+    const modeData = getModeData();
     const dims = modeData.dims;
     
     dims.forEach(d => {
@@ -588,10 +746,10 @@ function drawDimensions() {
         
         if (d.type === 'h') {
             label.style.left = (d.x + d.w/2) + 'px';
-            label.style.top = (d.y - 18) + 'px';
+            label.style.top = (d.y - 15) + 'px';
             label.style.transform = 'translateX(-50%)';
         } else {
-            label.style.left = (d.x + 12) + 'px';
+            label.style.left = (d.x + 10) + 'px';
             label.style.top = (d.y + d.h/2) + 'px';
             label.style.transform = 'translateY(-50%)';
         }
@@ -601,179 +759,146 @@ function drawDimensions() {
     });
 }
 
-/**
- * التحقق من اكتمال البرهان
- */
 function checkCompletion() {
     if (GameState.placedPieces === GameState.totalPieces) {
-        const completionTime = (Date.now() - GameState.startTime) / 1000;
-        const modeData = calculateProportionalPieces(GameState.currentMode);
+        stopTimer();
+        GameState.totalCompletions++;
+        
+        const modeData = getModeData();
         
         elements.mainDropZone.classList.add('correct-bg');
-        elements.totalAreaVal.innerText = modeData.totalArea;
+        elements.totalAreaVal.textContent = modeData.totalArea;
         elements.feedback.classList.remove('invisible');
         elements.rulesPanel.classList.add('visible');
         
         drawDimensions();
         
-        // حساب النقاط مع مكافآت
-        let earnedPoints = 50; // نقاط أساسية
-        if (completionTime < 30) earnedPoints += 50; // مكافأة السرعة
-        if (GameState.streak >= 2) earnedPoints += 25; // مكافأة السلسلة
-        if (GameState.hintsUsed === 0) earnedPoints += 25; // مكافأة عدم استخدام تلميحات
+        // حساب النقاط
+        let earnedPoints = 50;
+        const bonuses = [];
+        
+        if (GameState.elapsedSeconds < 15) {
+            earnedPoints += 100;
+            bonuses.push('🚀 سريع جداً (+100)');
+        } else if (GameState.elapsedSeconds < 30) {
+            earnedPoints += 50;
+            bonuses.push('⚡ سريع (+50)');
+        }
+        
+        if (GameState.streak >= 2) {
+            earnedPoints += 25;
+            bonuses.push('🔥 سلسلة (+25)');
+        }
+        
+        if (GameState.hintsUsed === 0) {
+            earnedPoints += 25;
+            bonuses.push('🧠 بدون تلميح (+25)');
+        }
         
         addPoints(earnedPoints);
         GameState.streak++;
+        if (GameState.streak > GameState.bestStreak) {
+            GameState.bestStreak = GameState.streak;
+        }
         
-        // جسيمات النجاح
+        // تسجيل اكتمال المرحلة
+        GameState.completedModes[GameState.currentMode] = true;
+        
+        // جسيمات
         const rect = elements.mainDropZone.getBoundingClientRect();
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-        createParticles(centerX, centerY);
+        createParticles(rect.width / 2, rect.height / 2, 30);
         
         AudioSystem.playSuccess();
         
-        // التحقق من الإنجازات
-        if (!GameState.achievements.includes('firstComplete')) {
-            unlockAchievement('firstComplete');
-        }
-        
-        if (completionTime < 30 && !GameState.achievements.includes('speedRunner')) {
-            unlockAchievement('speedRunner');
-        }
-        
-        if (GameState.streak >= 3 && !GameState.achievements.includes('perfectStreak')) {
-            unlockAchievement('perfectStreak');
-        }
-        
-        if (GameState.hintsUsed === 0 && !GameState.achievements.includes('noHints')) {
-            unlockAchievement('noHints');
-        }
-        
-        if (valueChangeCount >= 5 && !GameState.achievements.includes('proportionalMaster')) {
-            unlockAchievement('proportionalMaster');
-        }
-        
-        // عرض النقاط المكتسبة
-        document.getElementById('pointsEarned').innerHTML = `
-            <span class="bg-emerald-200 text-emerald-800 px-3 py-1 rounded-full text-sm font-bold">+${earnedPoints} نقطة</span>
-            ${completionTime < 30 ? '<span class="bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold">⚡ سريع</span>' : ''}
-            ${GameState.hintsUsed === 0 ? '<span class="bg-purple-200 text-purple-800 px-3 py-1 rounded-full text-sm font-bold">🧠 بدون تلميح</span>' : ''}
+        // عرض النقاط
+        elements.pointsEarned.innerHTML = `
+            <span class="bg-emerald-200 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">+${earnedPoints} نقطة</span>
+            ${bonuses.map(b => `<span class="bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold">${b}</span>`).join('')}
         `;
+        
+        // التحقق من الإنجازات
+        checkAllAchievements();
         
         updateHUD();
         saveProgress();
-        setTimeout(triggerMathJax, 60);
+        setTimeout(triggerMathJax, 100);
     }
 }
 
-/**
- * تهيئة اللعبة مع القطع المتناسبة
- */
 function initGame() {
-    // تحديث القيم
     GameState.a = parseInt(elements.rangeA.value);
     GameState.b = parseInt(elements.rangeB.value);
     
-    // ضمان أن a > b
+    // ضمان صحة القيم
     if (GameState.a <= GameState.b) {
-        GameState.a = GameState.b + 10;
+        GameState.a = GameState.b + 20;
         elements.rangeA.value = GameState.a;
     }
     
-    // ضمان أن a-b لا يقل عن 20 للوضوح
-    if (GameState.a - GameState.b < 20) {
-        GameState.b = GameState.a - 20;
-        elements.rangeB.value = GameState.b;
+    if (GameState.currentMode === 'second' || GameState.currentMode === 'third') {
+        if (GameState.a - GameState.b < 20) {
+            GameState.b = GameState.a - 20;
+            elements.rangeB.value = GameState.b;
+        }
     }
     
     elements.valA.textContent = GameState.a;
     elements.valB.textContent = GameState.b;
 
-    const modeData = calculateProportionalPieces(GameState.currentMode);
+    const modeData = getModeData();
     
-    // تحديث النصوص
-    elements.formulaText.innerHTML = getFormulaText();
+    elements.formulaText.innerHTML = `\\( ${modeData.formula} \\)`;
     elements.storyText.textContent = getStoryText();
     elements.explanationContent.innerHTML = getExplanationHTML();
-    elements.dailyChallenge.textContent = `أكمل البرهان بقيم a=${GameState.a}, b=${GameState.b}`;
+    elements.dailyChallenge.textContent = `أكمل البرهان: ${modeData.formula} مع a=${GameState.a}, b=${GameState.b}`;
 
-    // تنظيف وإعادة تهيئة
     clearZone();
 
-    // تعيين حجم منطقة الإفلات
-    elements.mainDropZone.style.width = Math.max(modeData.totalWidth, 100) + 'px';
-    elements.mainDropZone.style.height = Math.max(modeData.totalHeight, 100) + 'px';
+    elements.mainDropZone.style.width = Math.max(modeData.totalWidth, 80) + 'px';
+    elements.mainDropZone.style.height = Math.max(modeData.totalHeight, 80) + 'px';
 
     createPieces();
     updateHUD();
+    updateModeDetails();
     
-    // ضبط التكبير التلقائي
     adjustBoardScale(modeData.totalWidth, modeData.totalHeight);
     
-    setTimeout(triggerMathJax, 70);
+    startTimer();
+    setTimeout(triggerMathJax, 100);
 }
 
-/**
- * ضبط تكبير اللوحة تلقائياً حسب حجم المربع
- */
 function adjustBoardScale(totalWidth, totalHeight) {
-    const maxWidth = 500; // أقصى عرض مسموح
-    const maxHeight = 500; // أقصى ارتفاع مسموح
+    const maxWidth = 450;
+    const maxHeight = 450;
     
     const scaleX = maxWidth / totalWidth;
     const scaleY = maxHeight / totalHeight;
-    const scale = Math.min(scaleX, scaleY, 1.5); // لا يزيد عن 1.5x
+    const scale = Math.min(scaleX, scaleY, 1.4);
     
-    if (window.innerWidth >= 768) {
-        elements.boardScaler.style.transform = `scale(${Math.min(scale, 1.35)})`;
+    if (window.innerWidth >= 1024) {
+        elements.boardScaler.style.transform = `scale(${Math.min(scale, 1.25)})`;
+    } else if (window.innerWidth >= 768) {
+        elements.boardScaler.style.transform = `scale(${Math.min(scale, 1.1)})`;
     } else {
-        elements.boardScaler.style.transform = `scale(${Math.min(scale, 0.9)})`;
-    }
-}
-
-function getFormulaText() {
-    switch(GameState.currentMode) {
-        case 'first': return `\\( (a+b)^2 = a^2 + 2ab + b^2 \\)`;
-        case 'second': return `\\( (a-b)^2 = a^2 - 2ab + b^2 \\)`;
-        case 'third': return `\\( (a-b)(a+b) = a^2 - b^2 \\)`;
+        elements.boardScaler.style.transform = `scale(${Math.min(scale, 0.85)})`;
     }
 }
 
 function getStoryText() {
     switch(GameState.currentMode) {
-        case 'first': return `🏰 ابنِ القلعة المربعة الكبيرة! (${GameState.a}+${GameState.b})²`;
-        case 'second': return `🔍 اكتشف المساحة المخفية داخل المربع! (${GameState.a}-${GameState.b})²`;
-        case 'third': return `🎯 اصنع المستطيل السحري! (${GameState.a}-${GameState.b})(${GameState.a}+${GameState.b})`;
+        case 'first': return `🏰 ابنِ المربع الكبير! (${GameState.a}+${GameState.b})²`;
+        case 'second': return `🔍 اكتشف المساحة المخفية! (${GameState.a}-${GameState.b})²`;
+        case 'third': return `🎯 اصنع المستطيل السحري! ${GameState.a}²-${GameState.b}²`;
     }
 }
 
 function getExplanationHTML() {
-    switch(GameState.currentMode) {
-        case 'first': return `
-            <p class="text-indigo-300 font-bold text-xl mb-2">المتطابقة الأولى: مربع المجموع</p>
-            <p>المساحة الكلية = (${GameState.a} + ${GameState.b})² = ${(GameState.a + GameState.b) ** 2}</p>
-            <p>المربع الأزرق: ${GameState.a}² = ${GameState.a ** 2}</p>
-            <p>المربع الوردي: ${GameState.b}² = ${GameState.b ** 2}</p>
-            <p>المستطيلان الأصفران: 2 × (${GameState.a} × ${GameState.b}) = ${2 * GameState.a * GameState.b}</p>
-            <p class="text-emerald-300 mt-2">✅ ${GameState.a ** 2} + ${2 * GameState.a * GameState.b} + ${GameState.b ** 2} = ${(GameState.a + GameState.b) ** 2}</p>
-        `;
-        case 'second': return `
-            <p class="text-indigo-300 font-bold text-xl mb-2">المتطابقة الثانية: مربع الفرق</p>
-            <p>المساحة الكلية = ${GameState.a}² = ${GameState.a ** 2}</p>
-            <p>المربع الأزرق الداكن: (${GameState.a}-${GameState.b})² = ${(GameState.a - GameState.b) ** 2}</p>
-            <p>المستطيلان الرماديان: 2 × ${GameState.b}(${GameState.a}-${GameState.b}) = ${2 * GameState.b * (GameState.a - GameState.b)}</p>
-            <p>المربع الوردي: ${GameState.b}² = ${GameState.b ** 2}</p>
-            <p class="text-emerald-300 mt-2">✅ ${GameState.a ** 2} = ${(GameState.a - GameState.b) ** 2} + ${2 * GameState.b * (GameState.a - GameState.b)} + ${GameState.b ** 2}</p>
-        `;
-        case 'third': return `
-            <p class="text-indigo-300 font-bold text-xl mb-2">المتطابقة الثالثة: فرق المربعين</p>
-            <p>المساحة الكلية = (${GameState.a}+${GameState.b})(${GameState.a}-${GameState.b}) = ${(GameState.a + GameState.b) * (GameState.a - GameState.b)}</p>
-            <p>المستطيل الأزرق: ${GameState.a}(${GameState.a}-${GameState.b}) = ${GameState.a * (GameState.a - GameState.b)}</p>
-            <p>المستطيل الأصفر: ${GameState.b}(${GameState.a}-${GameState.b}) = ${GameState.b * (GameState.a - GameState.b)}</p>
-            <p class="text-emerald-300 mt-2">✅ ${GameState.a ** 2} - ${GameState.b ** 2} = ${(GameState.a + GameState.b) * (GameState.a - GameState.b)}</p>
-        `;
-    }
+    const modeData = getModeData();
+    return `
+        <p class="text-indigo-300 font-bold text-lg md:text-xl mb-2">${getModeTitle()}</p>
+        <p class="text-base">${modeData.explanation}</p>
+        <p class="text-emerald-300 mt-2">✅ النتيجة: ${modeData.totalArea} وحدة مربعة</p>
+    `;
 }
 
 function switchMode(mode) {
@@ -784,18 +909,103 @@ function switchMode(mode) {
     
     elements.rulesPanel.classList.remove('visible');
     
-    // التحقق من إنجاز المستكشف
-    const allModes = ['first', 'second', 'third'];
-    const completedModes = new Set();
-    
-    if (GameState.achievements.includes('firstComplete')) completedModes.add('first');
-    if (GameState.achievements.includes('explorer')) completedModes.add('second');
-    
-    if (completedModes.size >= 2 && !GameState.achievements.includes('explorer')) {
-        unlockAchievement('explorer');
+    initGame();
+}
+
+// ============ وظائف إضافية ============
+function useHint() {
+    if (GameState.totalPoints >= 10) {
+        GameState.totalPoints -= 10;
+        GameState.hintsUsed++;
+        updateHUD();
+        
+        const pieces = document.querySelectorAll('#piecesContainer > div');
+        const placed = GameState.placedPieces;
+        
+        if (pieces[placed]) {
+            pieces[placed].style.animation = 'none';
+            pieces[placed].style.boxShadow = '0 0 30px #f59e0b, 0 0 60px #f59e0b';
+            pieces[placed].style.transform = 'scale(1.1)';
+            pieces[placed].style.zIndex = '50';
+            setTimeout(() => {
+                pieces[placed].style.boxShadow = '';
+                pieces[placed].style.transform = '';
+                pieces[placed].style.zIndex = '';
+                pieces[placed].style.animation = '';
+            }, 2500);
+        }
+        
+        showToast('💡 تم خصم 10 نقاط للتلميح', 'warning');
+    } else {
+        showToast('❌ ليس لديك نقاط كافية! (تحتاج 10 نقاط)', 'error');
+    }
+}
+
+function autoComplete() {
+    if (GameState.placedPieces === GameState.totalPieces) {
+        showToast('⚠️ البرهان مكتمل بالفعل!', 'warning');
+        return;
     }
     
+    GameState.autoCompleteUsed = true;
+    const modeData = getModeData();
+    
+    // إزالة القطع الموجودة
+    Array.from(elements.mainDropZone.children).forEach(child => {
+        if (child.classList && child.classList.contains('draggable')) {
+            child.remove();
+        }
+    });
+    
+    // وضع جميع القطع تلقائياً
+    modeData.pieces.forEach(p => {
+        const el = document.getElementById(p.id);
+        if (el && !elements.mainDropZone.contains(el)) {
+            el.style.position = 'absolute';
+            if (p.pos.top !== undefined) el.style.top = p.pos.top;
+            if (p.pos.bottom !== undefined) el.style.bottom = p.pos.bottom;
+            if (p.pos.left !== undefined) el.style.left = p.pos.left;
+            if (p.pos.right !== undefined) el.style.right = p.pos.right;
+            el.style.width = p.w + 'px';
+            el.style.height = p.h + 'px';
+            
+            elements.mainDropZone.appendChild(el);
+        }
+    });
+    
+    GameState.placedPieces = modeData.pieces.length;
+    elements.dropPrompt.classList.add('hidden');
+    updateHUD();
+    checkCompletion();
+    
+    showToast('🤖 تم عرض الحل تلقائياً', 'info');
+}
+
+function nextChallenge() {
+    const modes = ['first', 'second', 'third'];
+    const nextMode = modes[Math.floor(Math.random() * modes.length)];
+    
+    GameState.a = Math.floor(Math.random() * (GameState.maxA - GameState.minA + 1)) + GameState.minA;
+    GameState.b = Math.floor(Math.random() * (GameState.maxB - GameState.minB + 1)) + GameState.minB;
+    
+    if (GameState.a <= GameState.b) {
+        GameState.a = GameState.b + 25;
+    }
+    
+    elements.rangeA.value = GameState.a;
+    elements.rangeB.value = GameState.b;
+    elements.valA.textContent = GameState.a;
+    elements.valB.textContent = GameState.b;
+    
+    switchMode(nextMode);
+    showToast('🚀 تحدي جديد يبدأ الآن!', 'success');
+}
+
+function resetCurrentMode() {
+    GameState.streak = 0;
+    GameState.hintsUsed = 0;
     initGame();
+    showToast('🔄 تم إعادة نفس التحدي');
 }
 
 // ============ أحداث المستخدم ============
@@ -817,18 +1027,15 @@ elements.mainDropZone.addEventListener('drop', (e) => {
     
     if (!el || elements.mainDropZone.contains(el)) return;
 
-    const modeData = calculateProportionalPieces(GameState.currentMode);
+    const modeData = getModeData();
     const pieceConfig = modeData.pieces.find(p => p.id === id);
     if (!pieceConfig) return;
 
-    // وضع القطعة في موقعها الصحيح داخل المربع
     el.style.position = 'absolute';
     if (pieceConfig.pos.top !== undefined) el.style.top = pieceConfig.pos.top;
     if (pieceConfig.pos.bottom !== undefined) el.style.bottom = pieceConfig.pos.bottom;
     if (pieceConfig.pos.left !== undefined) el.style.left = pieceConfig.pos.left;
     if (pieceConfig.pos.right !== undefined) el.style.right = pieceConfig.pos.right;
-    
-    // ضبط الأبعاد بدقة
     el.style.width = pieceConfig.w + 'px';
     el.style.height = pieceConfig.h + 'px';
 
@@ -841,42 +1048,38 @@ elements.mainDropZone.addEventListener('drop', (e) => {
     checkCompletion();
 });
 
-// أحداث المنزلقات
 elements.rangeA.addEventListener('input', () => {
-    valueChangeCount++;
+    GameState.valueChangeCount++;
     initGame();
 });
 
 elements.rangeB.addEventListener('input', () => {
-    valueChangeCount++;
+    GameState.valueChangeCount++;
     initGame();
 });
 
-document.getElementById('resetBtn').addEventListener('click', () => {
-    GameState.streak = 0;
-    GameState.hintsUsed = 0;
-    initGame();
-    showToast('🔄 تم إعادة التعيين');
-});
-
+document.getElementById('resetBtn').addEventListener('click', resetCurrentMode);
 document.getElementById('hintBtn').addEventListener('click', useHint);
+document.getElementById('autoCompleteBtn').addEventListener('click', autoComplete);
 
-// تحديث التكبير عند تغيير حجم النافذة
 window.addEventListener('resize', () => {
-    const modeData = calculateProportionalPieces(GameState.currentMode);
+    const modeData = getModeData();
     adjustBoardScale(modeData.totalWidth, modeData.totalHeight);
 });
 
 // جعل الدوال متاحة عالمياً
 window.switchMode = switchMode;
 window.nextChallenge = nextChallenge;
+window.resetCurrentMode = resetCurrentMode;
 
 // ============ التهيئة عند التحميل ============
 window.addEventListener('DOMContentLoaded', () => {
     AudioSystem.init();
     loadProgress();
     initGame();
-    console.log('🎮 مختبر المتطابقات - نظام القطع المتناسبة جاهز!');
-    console.log(`📐 الأبعاد الحالية: a=${GameState.a}, b=${GameState.b}`);
-    console.log(`📏 المربع الكلي: ${calculateProportionalPieces(GameState.currentMode).totalWidth}x${calculateProportionalPieces(GameState.currentMode).totalHeight}`);
+    
+    console.log('🎮 مختبر المتطابقات الهامة - النظام المتكامل جاهز!');
+    console.log('📐 المتطابقات المدعومة: (a+b)², (a-b)², a²-b²');
+    console.log('📏 القيم الافتراضية: a=' + GameState.a + ', b=' + GameState.b);
+    console.log('🏆 الإنجازات المحققة: ' + GameState.achievements.length + '/12');
 });
